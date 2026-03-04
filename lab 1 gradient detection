@@ -1,0 +1,77 @@
+%% Minimal Water Surface Elevation Extraction
+videoPath = 'C:\Users\redee\OneDrive\Desktop\Spring 2026 Courses\OCG 613\Lab 1\24.MOV';
+vid = VideoReader(videoPath);
+fps = vid.FrameRate;
+
+% start & stop
+startTime = 10;  
+stopTime  = 30;  
+% times to frame numbers
+startFrame = max(1, round(startTime * fps));
+stopFrame  = min(round(stopTime * fps), vid.NumFrames);
+% ROI using first frame
+firstFrame = read(vid, 1);
+figure; imshow(firstFrame);
+title('Draw rectangle around meniscus');
+rect = round(getrect());
+close;
+
+x1 = rect(1); y1 = rect(2);
+x2 = rect(1) + rect(3);
+y2 = rect(2) + rect(4);
+roiWidth = x2 - x1 + 1;
+
+surfaceMatrix = [];
+figure('Position', [100 100 1000 400]);
+
+for frameIdx = startFrame:stopFrame
+    frame = read(vid, frameIdx);  % read by frame index
+    
+    if size(frame,3) == 3
+        frameGray = im2double(rgb2gray(frame));
+    else
+        frameGray = im2double(frame);
+    end
+    
+    roi = frameGray(y1:y2, x1:x2);
+    
+    Gy = diff(roi,1,1);
+    [~, surfaceRow] = max(abs(Gy), [], 1);
+    surfaceMatrix(frameIdx-startFrame+1,:) = surfaceRow;
+    
+    % Display
+    subplot(1,2,1); imshow(roi); hold on;
+    plot(1:length(surfaceRow), surfaceRow,'r-','LineWidth',2); hold off;
+    title(sprintf('Frame %d', frameIdx));
+    
+    subplot(1,2,2); imshow(abs(Gy),[]);
+    title('Gradient magnitude');
+    drawnow;
+end
+
+% Time vector
+time = (0:size(surfaceMatrix,1)-1)'/fps + startTime;
+xPixels = 1:roiWidth;
+% Deviation from mean
+meanSurface = mean(surfaceMatrix,1);
+deviation = surfaceMatrix - meanSurface;
+save('1surface_data.mat','surfaceMatrix','deviation','time','xPixels','fps','roiWidth');
+fprintf('Done. Saved %d frames x %d positions.\n', size(surfaceMatrix,1), roiWidth);
+%% time series
+figure;
+subplot(2,1,1)
+plot(time, deviation(:, round(end/2))) % middle column
+xlabel('time (s)')
+ylabel('$\eta$','Interpreter','latex')
+
+%% FFT / Power Spectrum
+Fs = fps;
+X = zeros(length(xPixels), floor(length(time)/2)+1);
+for i = 1:length(xPixels)
+    [X(i,:), freq] = positiveFFT(deviation(:,i), Fs);
+end
+
+subplot(2,1,2)
+loglog(freq, mean(abs(X).^2,1), 'k')
+xlabel('$f$','Interpreter','latex')
+ylabel('$S$','Interpreter','latex')
