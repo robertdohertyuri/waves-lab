@@ -1,0 +1,73 @@
+%% Phase Speed Comparison
+clear; clc; close all
+
+exp_nums = [4 7 10 14 16 19 22];
+
+phase_data = [ ...
+    0.41987 0.40142 0.48334;  % Exp 4
+    0.48110 0.40653 0.48391;  % Exp 7
+    0.44708 0.54727 0.48298;  % Exp 10
+    0.50943 0.36719 0.55910;  % Exp 14
+    0.51008 0.54609 0.55849;  % Exp 16
+    0.36439 0.63750 0.57151;  % Exp 19
+    0.50590 0.60234 0.56679]; % Exp 22
+
+shallow_idx = [1 2 3];  
+deep_idx    = [4 5 6 7]; 
+
+marker_shallow = 'o';
+marker_deep    = 's';
+markerSize = 140;
+
+colors = lines(length(exp_nums));
+
+direct_border = [0 0 0.2];  % dark blue border for Direct
+cross_border  = [0.5 0 0];  % dark red border for Cross-Corr
+
+figure('Color','w','Position',[200 200 900 550]); 
+hold on; grid on; box on
+
+% reference line
+max_val = max(phase_data(:)) * 1.1;
+plot([0 max_val],[0 max_val],'k--','LineWidth',2);
+
+h = gobjects(length(exp_nums),2);
+
+for i = 1:length(exp_nums)
+    if ismember(i, shallow_idx)
+        mshape = marker_shallow;
+    else
+        mshape = marker_deep;
+    end
+    
+    % Direct
+    h(i,1) = scatter(phase_data(i,3), phase_data(i,1), markerSize, ...
+        'Marker', mshape, ...
+        'MarkerFaceColor', colors(i,:), ...
+        'MarkerEdgeColor', direct_border, ...
+        'LineWidth',2);
+    
+    % Cross-Corr
+    h(i,2) = scatter(phase_data(i,3), phase_data(i,2), markerSize, ...
+        'Marker', mshape, ...
+        'MarkerFaceColor', colors(i,:), ...
+        'MarkerEdgeColor', cross_border, ...
+        'LineWidth',2);
+end
+
+% Fourmat
+xlabel('Theoretical Phase Speed $c_\mathrm{theory}$ (m/s)', 'Interpreter','latex','FontSize',16)
+ylabel('Measured Phase Speed (m/s)', 'Interpreter','latex','FontSize',16)
+title('Phase Speed Comparison','FontSize',18)
+legend_entries = cell(length(exp_nums)*2,1);
+for i = 1:length(exp_nums)
+    legend_entries{i} = ['Exp ' num2str(exp_nums(i)) ' Direct'];
+    legend_entries{i+length(exp_nums)} = ['Exp ' num2str(exp_nums(i)) ' Cross'];
+end
+legend(h(:), legend_entries, 'Location','northwest','FontSize',12,'Interpreter','none')
+%Axes
+axis equal
+xlim([0 max_val])
+ylim([0 max_val])
+set(gca,'FontSize',14,'LineWidth',1.6,'TickDir','out','TickLength',[0.015 0.015])
+grid on; box on
