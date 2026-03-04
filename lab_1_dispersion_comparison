@@ -1,0 +1,189 @@
+clear; clc; close all;
+load('C:\Users\redee\OneDrive\Desktop\Spring 2026 Courses\OCG 613\Lab 1\Raw Data Ouput\16surface_data.mat')
+% deviation  = surface displacement (pixels)
+% time       = time vector (seconds)
+% xPixels    = spatial positions (pixels)
+% fps        = frame rate (Hz)
+%% cal
+dx = 3.125e-4;      % meters per pixel
+h  = 0.02615;        % water depth (m) -- change based on table of values
+%% data from file
+Fs = fps;
+Nt = length(time);
+Nx = length(xPixels);
+%% A by RMS
+A_rms_pixels = sqrt(mean(deviation(:).^2));
+A_rms = A_rms_pixels * dx;
+%% dom T
+Y = fft(deviation);
+P2 = Y/Nt;
+P1 = P2(1:floor(Nt/2)+1,:);
+P1(2:end-1,:) = 2*P1(2:end-1,:);
+freq = Fs*(0:floor(Nt/2))/Nt;
+S = mean(abs(P1).^2,2);
+[~,idx] = max(S);
+f_dom = freq(idx);
+T = 1/f_dom;
+omega = 2*pi*f_dom;
+%% dom k
+[Xk0, cyclesPerMeter] = positiveFFT(deviation(1,:), 1/dx);
+N_fft = length(Xk0);
+xFFT = nan(Nt, N_fft);
+for it = 1:Nt
+    eta_row = deviation(it,:);
+    [Xk, ~] = positiveFFT(eta_row, 1/dx);
+
+    if length(Xk) > N_fft
+        Xk = Xk(1:N_fft);
+    elseif length(Xk) < N_fft
+        Xk(end+1:N_fft) = 0;
+    end
+
+    xFFT(it,:) = abs(Xk);
+end
+
+meanFFT = mean(xFFT,1);
+
+kvec = 2*pi*cyclesPerMeter(1:N_fft);
+
+[~, peakIdx] = max(meanFFT);
+k_dom = kvec(peakIdx);
+
+lambda = 2*pi/k_dom;
+kh = k_dom * h;
+%% Dispersion Relation
+g = 9.81;
+sigma = 0.072;
+rho = 1000;
+Tcap = sigma/rho;
+
+k_min = 0.5 * k_dom;
+k_max = 1.5 * k_dom;
+k_plot = linspace(k_min, k_max, 500);
+
+omega_full_curve    = sqrt((g*k_plot + Tcap*k_plot.^3).*tanh(k_plot*h));
+omega_noT_curve     = sqrt((g*k_plot).*tanh(k_plot*h));
+
+%% Compare plot
+
+figure('Position',[200 200 900 550],'Color','w');
+hold on
+
+% curves w/ T and NO
+plot(k_plot, omega_full_curve, 'k','LineWidth',2.5, ...
+     'DisplayName','Full dispersion');
+
+plot(k_plot, omega_noT_curve,  'r--','LineWidth',2.5, ...
+     'DisplayName','No surface tension');
+
+% data from selected runs
+exp_num   = [4 7 10 14 16 19 22];
+k_exp     = [21.34 21.05 21.53 21.39 21.53 18.50 19.62];
+omega_exp = [8.78182 10.97728 12.23182 8.46819 10.97728 12.23182 10.97728];
+
+shallow_idx = [1 2 3];
+deep_idx    = [4 5 6 7];
+
+colors = lines(length(exp_num));
+
+markerSize = 120;
+
+% shallow
+for i = shallow_idx
+    scatter(k_exp(i), omega_exp(i), markerSize, ...
+        'o', ...
+        'MarkerFaceColor', colors(i,:), ...
+        'MarkerEdgeColor','k', ...
+        'LineWidth',1.3, ...
+        'DisplayName',sprintf('Exp %d',exp_num(i)));
+end
+
+% deep
+for i = deep_idx
+    scatter(k_exp(i), omega_exp(i), markerSize, ...
+        's', ...
+        'MarkerFaceColor', colors(i,:), ...
+        'MarkerEdgeColor','k', ...
+        'LineWidth',1.3, ...
+        'DisplayName',sprintf('Exp %d',exp_num(i)));
+end
+
+xlabel('$k$ (rad m$^{-1}$)','Interpreter','latex','FontSize',16)
+ylabel('$\omega$ (rad s$^{-1}$)','Interpreter','latex','FontSize',16)
+title('Dispersion Relation Comparison','FontSize',17)
+
+set(gca,'FontSize',14,...
+        'LineWidth',1.6,...
+        'Box','on',...
+        'TickDir','out',...
+        'TickLength',[0.015 0.015]);
+
+grid on
+legend('Location','best','FontSize',12)
+
+hold off
+%% 2D FFT VAR--CODE FROM ANDY
+
+eta_m = deviation * dx;
+eta_m = eta_m - mean(eta_m, 'all');
+
+[m, n] = size(eta_m);
+
+% symmetric k vector
+k = 2*pi * (-floor(n/2):ceil(n/2)-1) / (n*dx);
+
+% symmetric omega vector
+omega_vec = 2*pi * (-floor(m/2):ceil(m/2)-1) * (fps/m);
+
+% actual 2D FFT (Fast Fueior)
+Y = fft2(eta_m);
+Yshift = fftshift(Y);
+
+var_cont = abs(Yshift).^2 / (m^2 * n^2);
+
+figure('Position',[250 250 900 600],'Color','w');
+
+imagesc(k, omega_vec, log10(var_cont))
+set(gca,'YDir','normal')
+
+colormap(turbo)
+cb = colorbar;
+cb.Label.String = '$\log_{10}$ Variance (m$^2$)';
+cb.Label.Interpreter = 'latex';
+cb.FontSize = 13;
+
+caxis([-11 -5])
+xlim([-200 200])
+ylim([-40 40])
+
+hold on
+
+k_disp = linspace(-200, 200, 800);
+omega_disp = sqrt((g*abs(k_disp) + Tcap*abs(k_disp).^3).*tanh(abs(k_disp)*h));
+
+plot(k_disp,  omega_disp, 'w','LineWidth',2.5)
+plot(k_disp, -omega_disp, 'w','LineWidth',2.5)
+
+xlabel('$k$ (rad m$^{-1}$)','Interpreter','latex','FontSize',16)
+ylabel('$\omega$ (rad s$^{-1}$)','Interpreter','latex','FontSize',16)
+title('2D Spectral Variance Distribution','FontSize',17)
+
+set(gca,'FontSize',14,...
+        'LineWidth',1.6,...
+        'Box','on',...
+        'TickDir','out',...
+        'TickLength',[0.015 0.015]);
+
+grid on
+hold off
+
+%% RESULTS
+fprintf(['A_rms=%.5f m | T=%.5f s | lambda=%.5f m | ' ...
+         'k=%.5f rad/m | omega=%.5f rad/s | kh=%.3f\n'], ...
+         A_rms, T, lambda, k_dom, omega, kh);
+fprintf(['omega_full=%.5f | omega_noT=%.5f | ' ...
+         'omega_deep=%.5f | omega_shallow=%.5f\n'], ...
+         sqrt((g*k_dom + Tcap*k_dom^3)*tanh(k_dom*h)), ...
+         sqrt((g*k_dom)*tanh(k_dom*h)), ...
+         sqrt(g*k_dom + Tcap*k_dom^3), ...
+         sqrt(g*h*k_dom));
