@@ -1,0 +1,85 @@
+clear; clc;
+load('C:\Users\redee\OneDrive\Desktop\Spring 2026 Courses\OCG 613\Lab 1\Raw Data Ouput\24surface_data.mat')
+% deviation = surface displacement (pixels)
+% time = time vector (s)
+% xPixels = spatial positions (pixels)
+% fps = frame rate
+
+%% CALIBRATION
+dx = 3.125e-4;   % meters per pixel
+
+%% CONVERT TO METERS AND REMOVE MEAN
+eta_m = deviation * dx;                
+eta_m = eta_m - mean(eta_m,'all');   
+
+% params from video
+Fs = fps;                     
+Nt = length(time);            
+Nx = size(eta_m,2);           
+
+% temporal pwr spec
+
+PSD_all = zeros(floor(Nt/2)+1, Nx);
+
+for j = 1:Nx
+    
+    y = eta_m(:,j);           % time series at one spatial location
+    
+    Y = fft(y);               % FFT in time
+    P2 = abs(Y/Nt).^2;        % two-sided power spectrum
+    P1 = P2(1:floor(Nt/2)+1); % single-sided
+    
+    % conserve total variance
+    P1(2:end-1) = 2*P1(2:end-1);
+    
+    PSD_all(:,j) = P1;
+    
+end
+
+% spatial avg across spectrum
+PSD_mean = mean(PSD_all, 2);
+% freq vec
+f = Fs*(0:floor(Nt/2))/Nt;    % Hz
+%%LOG-LOG POWER SPECTRUM
+figure
+loglog(f, PSD_mean, 'LineWidth', 2)
+xlabel('Frequency (Hz)')
+ylabel('Power (m^2)')
+title('Log-Log Power Spectrum (Spatially Averaged)')
+grid on
+[~, idx] = max(PSD_mean);
+f_dom = f(idx);
+
+fprintf('Dominant frequency from PSD: %.5f Hz\n', f_dom);
+
+%% Power Spectra Comparison
+figure('Color','w','Position',[100 100 1200 1400])
+t = tiledlayout(nExp,1,'TileSpacing','compact','Padding','compact');
+
+colors = lines(nExp);
+
+for n = 1:nExp
+    nexttile
+    loglog(f_store{n}, PSD_store{n}, 'LineWidth',2, 'Color', colors(n,:))
+    hold on
+    % Dominant f
+    xline(f_dom(n),'r--','LineWidth',1.5)
+    grid on
+    ax = gca;
+    ax.FontSize = 12;
+    ax.XMinorTick = 'on';
+    ax.YMinorTick = 'on';
+    xlim([xmin xmax])
+    ylim([ymin ymax])
+    
+    ylabel('PSD (m^2/Hz)','Interpreter','tex','FontSize',12)  % or 'tex'
+    
+    title(sprintf('Experiment %d   (f_{dom} = %.3f Hz)', expNums(n), f_dom(n)),...
+        'Interpreter','tex','FontSize',14)   % use 'tex' instead of 'latex'
+    
+    if n == nExp
+        xlabel('Frequency (Hz)','Interpreter','tex','FontSize',12)
+    end
+end
+
+title(t,'Spatially Averaged Power Spectra','FontSize',16,'Interpreter','tex')
