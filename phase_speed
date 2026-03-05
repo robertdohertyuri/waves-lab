@@ -21,13 +21,13 @@ markerSize = 140;
 
 colors = lines(length(exp_nums));
 
-direct_border = [0 0 0.2];  % dark blue border for Direct
-cross_border  = [0.5 0 0];  % dark red border for Cross-Corr
+direct_border = [0 0 0.2];  % dark blue border
+cross_border  = [0.5 0 0];  % dark red border
 
 figure('Color','w','Position',[200 200 900 550]); 
 hold on; grid on; box on
 
-% reference line
+% ref ln
 max_val = max(phase_data(:)) * 1.1;
 plot([0 max_val],[0 max_val],'k--','LineWidth',2);
 
