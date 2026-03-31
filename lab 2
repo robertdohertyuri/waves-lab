@@ -1,0 +1,204 @@
+%% KdV Analysis Script
+clear; close all; clc;
+
+
+g = 9.81;                 
+h0 = 32.45e-3;             
+dx = 0.3125e-3;            
+
+numTrials = 5;
+
+eta_min = -2.2575e-2;  % meters
+eta_max = 1.5310e-2;   % meters
+
+for trial = 1:numTrials
+
+    %% trial data
+    filename = sprintf('%dsurface_data.mat', trial);
+    load(filename);
+    fprintf('\n=== Trial %d ===\n', trial);
+
+    
+    x = xPixels * dx;       
+    eta = deviation * dx;   
+
+    %% Limit time to 20 s, above this is just noise
+    t_limit = 20;
+    time_plot = time(time <= t_limit);
+    eta_plot  = eta(time <= t_limit, :);
+
+   
+    % 1. x–t Diagram
+   
+    figure('Position',[200 200 900 550],'Color','w');
+    imagesc(x, time_plot, eta_plot);
+    set(gca,'YDir','normal');
+
+    colormap(parula);  
+    caxis([eta_min eta_max]);   % uniform scaling
+    cb = colorbar;
+    cb.Label.String = '$\eta$ (m)';
+    cb.Label.Interpreter = 'latex';
+
+    xlabel('$x$ (m)','Interpreter','latex','FontSize',16)
+    ylabel('$t$ (s)','Interpreter','latex','FontSize',16)
+    title(sprintf('Trial %d: x--t Diagram',trial),'FontSize',17)
+    set(gca,'FontSize',14,'LineWidth',1.6,'Box','on',...
+        'TickDir','out','TickLength',[0.015 0.015]);
+    grid on
+
+    % 2. Wave Speed & Eta from Manual x-t Slope
+    fprintf('Click two points along the main wave ridge in the figure.\n');
+    [x_click, t_click] = ginput(2);
+
+    % wave speed
+    wave_speed = abs(diff(x_click) / diff(t_click));
+    fprintf('Estimated wave speed from x-t diagram: %.4f m/s\n', wave_speed);
+
+    % Get eta values at clicked points
+    eta_click = zeros(size(x_click));
+    for i = 1:length(x_click)
+        [~, ix] = min(abs(x - x_click(i)));
+        [~, it] = min(abs(time_plot - t_click(i)));
+
+        % eta value
+        eta_click(i) = eta_plot(it, ix);
+    end
+
+    %eta at clicked points
+    for i = 1:length(x_click)
+        fprintf('Point %d: x = %.4f m, t = %.4f s, eta = %.5f m\n', ...
+                i, x_click(i), t_click(i), eta_click(i));
+    end
+
+end
+
+%% Scatter Plot: Measured Wave Speeds vs KdV Prediction with Trial Numbers
+clear; close all; clc;
+
+g  = 9.81;        
+h0 = 32.45e-3;    
+
+%Data
+measured_speed = [0.7829, 0.5987, 0.7169, 0.5661, 0.7898]; % m/s
+eta_clicked    = [0.01115, 0.00951, 0.012035, 0.007365, 0.007525]; % m
+trial_numbers  = 1:5;
+
+%% KdV theory
+U_KdV = sqrt(g*h0) * (1 + eta_clicked./h0);
+
+%% Scatter plot
+figure('Color','w','Position',[200 200 900 550]);
+hold on
+
+% ±10%
+lims = [min([U_KdV measured_speed])*0.95, max([U_KdV measured_speed])*1.05];
+Uvec = linspace(lims(1), lims(2), 100);
+fill([Uvec fliplr(Uvec)], [0.9*Uvec fliplr(1.1*Uvec)], [0.9 0.9 0.9], 'FaceAlpha',0.3, 'EdgeColor','none', 'DisplayName','\pm10% Band');
+% Scatter points
+scatter(U_KdV, measured_speed, 120, 'r', 'filled', 'DisplayName','Measured vs KdV');
+% 1:1 reference line
+plot(lims, lims, 'k--', 'LineWidth',2, 'DisplayName','1:1 Line');
+
+xlabel('KdV Predicted Speed (m/s)','FontSize',16);
+ylabel('Measured Speed (m/s)','FontSize',16);
+title('Measured Wave Speeds vs KdV Prediction','FontSize',18);
+%trial numbers
+for i = 1:length(U_KdV)
+    text(U_KdV(i), measured_speed(i)+0.015, sprintf('Trial %d', trial_numbers(i)),...
+        'HorizontalAlignment','center','FontSize',12,'FontWeight','bold');
+end
+
+grid on
+set(gca,'FontSize',14,'LineWidth',1.6,'Box','on','TickDir','out','TickLength',[0.015 0.015]);
+legend('Location','best','FontSize',14);
+
+hold off
+
+fprintf('\nAll trials complete.\n');
+
+%% KdV Wave Collapse with Noise Reduction above threshold
+clear; close all; clc;
+
+%% Constants
+g = 9.81;                  
+h0 = 32.45e-3;             
+dx = 0.3125e-3;            
+numTrials = 5;
+tmax = 15;                 
+sgolayWindow = 21;         % smoothing window (must be odd)
+
+figure('Color','w','Position',[200 200 900 550]);
+hold on;
+colors = turbo(numTrials);
+
+for trial = 1:numTrials
+    
+    
+    filename = sprintf('%dsurface_data.mat', trial);
+    load(filename);
+
+   
+    it = find(time <= tmax);
+    t = time(it);
+    
+    
+    eta_t = deviation(it,:) * dx;
+    x = xPixels * dx;
+
+    % Smooth each spatial profile to reduce pixel noise
+    eta_t_smooth = smoothdata(eta_t, 2, 'sgolay', sgolayWindow);
+
+    % ind largest-magnitude crest/trough event
+    [~, idx_flat] = max(abs(eta_t_smooth(:)));
+    [it_peak, ix_peak] = ind2sub(size(eta_t_smooth), idx_flat);
+
+    profile = eta_t_smooth(it_peak, :);
+
+    A = eta_t_smooth(it_peak, ix_peak);
+    if A < 0
+        profile = -profile;
+        A = -A;
+    end
+
+    profile = profile - median(profile);
+
+    profile = profile / max(profile);
+
+    x_centered = x - x(ix_peak);
+
+    x_scaled = x_centered * sqrt(3*A/(4*h0^3));
+    eta_scaled = profile;
+
+    keep = abs(x_scaled) <= 6;
+
+
+    plot(x_scaled(keep), eta_scaled(keep), ...
+        'Color', colors(trial,:), ...
+        'LineWidth', 2)
+end
+
+%% Theoretical solitary-wave profile
+xi = linspace(-6,6,400);
+eta_theory = sech(xi).^2;
+
+plot(xi, eta_theory, 'k--', 'LineWidth', 2.5)
+
+xlabel('Rescaled $x$', 'Interpreter', 'latex', 'FontSize', 16)
+ylabel('Scaled $\eta / A$', 'Interpreter', 'latex', 'FontSize', 16)
+title('Collapsed Solitary Wave Profiles', 'FontSize', 17)
+
+legend(arrayfun(@(n) sprintf('Trial %d', n), 1:numTrials, ...
+    'UniformOutput', false), ...
+    'Location', 'northeast')
+
+set(gca, 'FontSize', 14, ...
+         'LineWidth', 1.6, ...
+         'Box', 'on', ...
+         'TickDir', 'out', ...
+         'TickLength', [0.015 0.015])
+
+grid on
+xlim([-6 6])
+ylim([-0.1 1.2])
+pbaspect([1 1 0.13])
