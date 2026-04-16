@@ -1,0 +1,107 @@
+clear; clc; close all;
+
+fps = 5.77; %via nigel
+dt = 1/fps;
+
+files = {'7.2.avi','7.3.avi','7.4.avi','4.8.avi'};
+freqs = [0.09, 0.04, 0.02, NaN]; % 4.8 frequency if known
+
+H = 12 * 0.0254;%convert to meters
+g = 9.81;
+rho0 = 1000;
+
+S_bottom = 31.5; % linear stratification assumption
+
+%% BUOYANCY FREQUENCY from estimated salinity 
+rho_bottom = 1000 + 0.75*S_bottom;
+drho_dz = (rho_bottom - rho0)/H;
+
+N2 = -(g/rho0)*drho_dz;
+N = sqrt(abs(N2));
+fprintf('Buoyancy frequency N = %.4f rad/s\n\n', N);
+% preallocate
+theta_meas = zeros(1,4);
+theta_theory = zeros(1,4);
+cp_meas = zeros(1,4);
+
+%%  MAIN LOOP for lab ques
+for i = 1:4
+
+    v = VideoReader(files{i});
+    % mid video so I can see waves
+    midFrame = floor(v.NumFrames/2);
+
+    frame1 = read(v, midFrame);
+    frame2 = read(v, midFrame + 10);
+
+    frame1 = im2uint8(frame1);
+    frame2 = im2uint8(frame2);
+
+
+    %ANGLE MEASUREMENt
+    figure;
+    imshow(frame1);
+    axis on; zoom on;
+    title(sprintf('Trial %d:4–6 points along wave beam', i));
+
+    [x,y] = ginput();
+
+    p = polyfit(x, y, 1); %fits a line to it
+    slope = p(1);
+
+    theta_meas(i) = atan(abs(slope)); %angle from vertical
+
+    close;
+    % PHASE SPEED (PIXELS/S)
+
+    figure;
+    imshow(frame1);
+    axis on;
+    title(sprintf('Trial %d:box around wave', i));
+
+    rect = getrect;
+    close;
+
+    patch1 = imcrop(frame1, rect);
+
+    if size(patch1,3) == 3
+        patch1_gray = rgb2gray(patch1);
+        frame2_gray = rgb2gray(frame2);
+    else
+        patch1_gray = patch1;
+        frame2_gray = frame2;
+    end
+
+    corr_map = normxcorr2(patch1_gray, frame2_gray);
+
+    [~, max_idx] = max(corr_map(:));
+    [ypeak, xpeak] = ind2sub(size(corr_map), max_idx);
+
+    x2 = xpeak - size(patch1_gray,2);
+    x1 = rect(1);
+
+    dx = x2 - x1;
+
+    dt_eff = 10 * dt;
+
+    cp_meas(i) = abs(dx) / dt_eff;
+
+    % THEORY
+    if ~isnan(freqs(i))
+        omega = 2*pi*freqs(i);
+        theta_theory(i) = acos(omega / N);
+    else
+        theta_theory(i) = NaN;
+    end
+
+end
+
+%% RESULTS
+fprintf('\nFINAL RESULTS\n\n');
+
+for i = 1:4
+    fprintf('Trial %d | File = %s\n', i, files{i});
+    fprintf('  Theta (deg): Measured = %.2f | Theory = %.2f\n', ...
+        rad2deg(theta_meas(i)), rad2deg(theta_theory(i)));
+    fprintf('  Phase speed = %.3f px/s\n\n', cp_meas(i));
+end
